@@ -180,7 +180,7 @@ function Login() {
         left: 0,
         right: 0,
         bottom: 0,
-        background: 'linear-gradient(135deg, rgba(13, 148, 136, 0.3) 0%, rgba(15, 52, 96, 0.4) 100%)',
+        background: 'linear-gradient(135deg, rgba(4, 120, 87, 0.18) 0%, rgba(15, 118, 110, 0.2) 45%, rgba(15, 23, 42, 0.18) 100%)',
         zIndex: 1,
       }} />
 
@@ -194,19 +194,49 @@ function Login() {
         fontFamily: "'DM Sans', sans-serif",
       }}>
         <form onSubmit={handleLogin} style={{
-          background: 'rgba(255, 255, 255, 0.92)',
-          backdropFilter: 'blur(12px)',
-          padding: '44px 36px',
-          borderRadius: '14px',
-          width: '360px',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
-          border: '1px solid rgba(255,255,255,0.6)',
+          background: 'rgba(255, 255, 255, 0.94)',
+          backdropFilter: 'blur(14px)',
+          padding: '36px',
+          borderRadius: '18px',
+          width: '380px',
+          boxShadow: '0 18px 48px rgba(15, 23, 42, 0.2)',
+          border: '1px solid rgba(255,255,255,0.78)',
         }}>
+          <div style={{
+            width: '42px',
+            height: '42px',
+            margin: '0 auto 16px',
+            borderRadius: '12px',
+            background: '#0f766e',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 8px 18px rgba(15, 118, 110, 0.22)',
+          }}>
+            <div style={{
+              width: '16px',
+              height: '16px',
+              background: 'white',
+              borderRadius: '50% 50% 50% 0',
+              transform: 'rotate(-45deg)',
+              position: 'relative',
+            }}>
+              <div style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: '#0f766e',
+                position: 'absolute',
+                top: '5px',
+                left: '5px',
+              }} />
+            </div>
+          </div>
           <h2 style={{
             textAlign: 'center',
             marginBottom: '6px',
-            color: '#0f4f4a',
-            fontSize: '24px',
+            color: '#134e4a',
+            fontSize: '25px',
             fontWeight: '700',
           }}>
             Appraisal Map
@@ -216,9 +246,9 @@ function Login() {
             textAlign: 'center',
             color: '#6b7280',
             fontSize: '13px',
-            marginBottom: '28px',
+            marginBottom: '24px',
           }}>
-            Sign in to access property data
+            Sign in to access appraisal records
           </p>
 
           {error && (
@@ -243,14 +273,15 @@ function Login() {
             required
             style={{
               width: '100%',
-              padding: '12px 14px',
+              padding: '13px 14px',
               marginBottom: '12px',
               borderRadius: '8px',
-              border: '1px solid #d1d5db',
+              border: '1px solid #cbd5e1',
               fontSize: '14px',
               boxSizing: 'border-box',
               outline: 'none',
               color: '#374151',
+              background: '#f8fafc',
             }}
             onFocus={(e) => e.target.style.borderColor = '#0d9488'}
             onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
@@ -263,14 +294,15 @@ function Login() {
             required
             style={{
               width: '100%',
-              padding: '12px 14px',
-              marginBottom: '22px',
+              padding: '13px 14px',
+              marginBottom: '18px',
               borderRadius: '8px',
-              border: '1px solid #d1d5db',
+              border: '1px solid #cbd5e1',
               fontSize: '14px',
               boxSizing: 'border-box',
               outline: 'none',
               color: '#374151',
+              background: '#f8fafc',
             }}
             onFocus={(e) => e.target.style.borderColor = '#0d9488'}
             onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
@@ -280,8 +312,8 @@ function Login() {
             disabled={loading}
             style={{
               width: '100%',
-              padding: '12px',
-              backgroundColor: '#0d9488',
+              padding: '13px',
+              backgroundColor: '#0f766e',
               color: 'white',
               border: 'none',
               borderRadius: '8px',
@@ -289,6 +321,7 @@ function Login() {
               fontSize: '15px',
               fontWeight: '600',
               opacity: loading ? 0.7 : 1,
+              boxShadow: '0 10px 18px rgba(15, 118, 110, 0.2)',
             }}
           >
             {loading ? 'Signing in...' : 'Sign In'}
