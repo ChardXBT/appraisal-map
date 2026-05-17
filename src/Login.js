@@ -180,7 +180,7 @@ function Login() {
         left: 0,
         right: 0,
         bottom: 0,
-        background: 'linear-gradient(135deg, rgba(4, 120, 87, 0.18) 0%, rgba(15, 118, 110, 0.2) 45%, rgba(15, 23, 42, 0.18) 100%)',
+        background: 'linear-gradient(135deg, rgba(4, 120, 87, 0.28) 0%, rgba(5, 150, 105, 0.22) 42%, rgba(6, 95, 70, 0.24) 100%)',
         zIndex: 1,
       }} />
 
@@ -194,20 +194,20 @@ function Login() {
         fontFamily: "'DM Sans', sans-serif",
       }}>
         <form onSubmit={handleLogin} style={{
-          background: 'rgba(255, 255, 255, 0.94)',
+          background: 'rgba(248, 255, 252, 0.94)',
           backdropFilter: 'blur(14px)',
           padding: '36px',
           borderRadius: '18px',
           width: '380px',
           boxShadow: '0 18px 48px rgba(15, 23, 42, 0.2)',
-          border: '1px solid rgba(255,255,255,0.78)',
+          border: '1px solid rgba(209, 250, 229, 0.9)',
         }}>
           <div style={{
             width: '42px',
             height: '42px',
             margin: '0 auto 16px',
             borderRadius: '12px',
-            background: '#0f766e',
+            background: '#047857',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -225,7 +225,7 @@ function Login() {
                 width: '6px',
                 height: '6px',
                 borderRadius: '50%',
-                background: '#0f766e',
+              background: '#047857',
                 position: 'absolute',
                 top: '5px',
                 left: '5px',
@@ -235,7 +235,7 @@ function Login() {
           <h2 style={{
             textAlign: 'center',
             marginBottom: '6px',
-            color: '#134e4a',
+            color: '#064e3b',
             fontSize: '25px',
             fontWeight: '700',
           }}>
@@ -281,7 +281,7 @@ function Login() {
               boxSizing: 'border-box',
               outline: 'none',
               color: '#374151',
-              background: '#f8fafc',
+              background: '#f0fdf4',
             }}
             onFocus={(e) => e.target.style.borderColor = '#0d9488'}
             onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
@@ -302,7 +302,7 @@ function Login() {
               boxSizing: 'border-box',
               outline: 'none',
               color: '#374151',
-              background: '#f8fafc',
+              background: '#f0fdf4',
             }}
             onFocus={(e) => e.target.style.borderColor = '#0d9488'}
             onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
@@ -313,7 +313,7 @@ function Login() {
             style={{
               width: '100%',
               padding: '13px',
-              backgroundColor: '#0f766e',
+              backgroundColor: '#047857',
               color: 'white',
               border: 'none',
               borderRadius: '8px',
@@ -321,7 +321,7 @@ function Login() {
               fontSize: '15px',
               fontWeight: '600',
               opacity: loading ? 0.7 : 1,
-              boxShadow: '0 10px 18px rgba(15, 118, 110, 0.2)',
+              boxShadow: '0 10px 18px rgba(4, 120, 87, 0.24)',
             }}
           >
             {loading ? 'Signing in...' : 'Sign In'}
