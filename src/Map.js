@@ -761,9 +761,9 @@ function MapView({ showToast = () => {} }) {
 
       <div style={{
         position: 'fixed', top: 0, left: 0, right: 0, height: '56px',
-        background: '#ffffff', borderBottom: '1px solid #e5e7eb',
+        background: '#ecfdf5', borderBottom: '1px solid #a7f3d0',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 20px', zIndex: 1000, boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+        padding: '0 20px', zIndex: 1000, boxShadow: '0 1px 4px rgba(6,95,70,0.08)',
       }}>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '500px', position: 'relative' }}>
@@ -805,7 +805,7 @@ function MapView({ showToast = () => {} }) {
           </button>
           <button
             onClick={handleSignOut}
-            style={{ padding: '9px 16px', backgroundColor: 'transparent', color: '#6b7280', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}
+            style={{ padding: '9px 16px', backgroundColor: '#d1fae5', color: '#065f46', border: '1px solid #6ee7b7', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
           >
             Log out
           </button>
