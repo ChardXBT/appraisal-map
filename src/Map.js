@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
-import { GoogleMap, useJsApiLoader, Marker, InfoWindow, MarkerClusterer } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Marker, MarkerClusterer } from '@react-google-maps/api';
 import { supabase } from './supabaseClient';
 import { applySpiralOffset, COORDINATE_PRECISION } from './mapUtils';
 
@@ -27,6 +27,9 @@ const MAP_IDLE_DEBOUNCE_MS = 250;
 const AUTOCOMPLETE_DEBOUNCE_MS = 300;
 const SIGNED_URL_TTL_SECONDS = 3600;
 const SIGNED_URL_REFRESH_BUFFER_MS = 60 * 1000;
+const DETAIL_PANEL_WIDTH = 320;
+const PRELOAD_LIMIT = 40;
+const MARKER_PAN_DURATION_MS = 650;
 
 const MARKER_ICON = {
   path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
@@ -38,9 +41,60 @@ const MARKER_ICON = {
   anchor: { x: 12, y: 22 },
 };
 
-const MarkerLayer = React.memo(function MarkerLayer({ appraisals, onMarkerClick }) {
+const createClusterStyle = ({ size, fill, textSize }) => ({
+  textColor: '#ffffff',
+  textSize,
+  url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 2}" fill="${fill}"/>
+      <circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 3}" fill="none" stroke="#ffffff" stroke-width="2"/>
+    </svg>
+  `),
+  height: size,
+  width: size,
+  anchorText: [0, 0],
+});
+
+const CLUSTER_STYLES = [
+  createClusterStyle({
+    size: 34,
+    fill: '#34d399',
+    textSize: 12,
+  }),
+  createClusterStyle({
+    size: 38,
+    fill: '#10b981',
+    textSize: 12,
+  }),
+  createClusterStyle({
+    size: 42,
+    fill: '#059669',
+    textSize: 13,
+  }),
+  createClusterStyle({
+    size: 46,
+    fill: '#047857',
+    textSize: 13,
+  }),
+];
+
+const MarkerLayer = React.memo(function MarkerLayer({ appraisals, onMarkerClick, onMarkerHover }) {
   return (
-    <MarkerClusterer>
+    <MarkerClusterer
+      styles={CLUSTER_STYLES}
+      calculator={(markers) => {
+        const count = markers.length;
+        let index = 1;
+        if (count >= 75) index = 4;
+        else if (count >= 30) index = 3;
+        else if (count >= 10) index = 2;
+        return {
+          text: String(count),
+          index,
+          title: `${count} appraisals`,
+        };
+      }}
+    >
       {(clusterer) => (
         <>
           {appraisals.map((appraisal) => (
@@ -50,6 +104,7 @@ const MarkerLayer = React.memo(function MarkerLayer({ appraisals, onMarkerClick 
               position={{ lat: appraisal.latitude, lng: appraisal.longitude }}
               icon={MARKER_ICON}
               onClick={() => onMarkerClick(appraisal)}
+              onMouseOver={() => onMarkerHover(appraisal)}
             />
           ))}
         </>
@@ -240,7 +295,7 @@ const AppraisalPopup = React.memo(function AppraisalPopup({ appraisal, getSigned
 
   if (editing) {
     return (
-      <div style={{ fontFamily: "'DM Sans', sans-serif", width: '280px' }}>
+      <div style={{ fontFamily: "'DM Sans', sans-serif", width: '100%', padding: '20px' }}>
         <p style={{ margin: '0 0 10px', fontWeight: '700', fontSize: '15px', color: '#1f2937' }}>Edit Appraisal</p>
         <input type="text" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} style={inputStyle} placeholder="Address" />
         <input type="text" value={editCity} onChange={(e) => setEditCity(e.target.value)} style={inputStyle} placeholder="City" />
@@ -307,26 +362,22 @@ const AppraisalPopup = React.memo(function AppraisalPopup({ appraisal, getSigned
   }
 
   return (
-    <div style={{ fontFamily: "'DM Sans', sans-serif", width: '280px' }}>
+    <div style={{ fontFamily: "'DM Sans', sans-serif", width: '100%', display: 'flex', flexDirection: 'column' }}>
       {photoUrl && (
-        <img src={photoUrl} alt={appraisal.address} style={{ width: '100%', height: '180px', borderRadius: '8px', marginBottom: '10px', objectFit: 'cover' }} />
+        <img src={photoUrl} alt={appraisal.address} style={{ width: '100%', height: '180px', objectFit: 'cover', display: 'block' }} />
       )}
-      <p style={{ margin: '0 0 3px', fontWeight: '700', color: '#1f2937', fontSize: '16px' }}>{appraisal.address}</p>
-      <p style={{ margin: '0 0 3px', color: '#6b7280', fontSize: '14px' }}>{appraisal.city}</p>
+      <div style={{ padding: '18px 18px 14px' }}>
+      <p style={{ margin: '0 0 4px', fontWeight: '700', color: '#1f2937', fontSize: '18px', lineHeight: 1.25 }}>{appraisal.address}</p>
+      <p style={{ margin: '0 0 4px', color: '#6b7280', fontSize: '14px' }}>{appraisal.city}</p>
       {appraisal.appraisal_date && (
-        <p style={{ margin: '0 0 10px', color: '#9ca3af', fontSize: '12px' }}>
+        <p style={{ margin: 0, color: '#9ca3af', fontSize: '12px' }}>
           Report: {new Date(appraisal.appraisal_date).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}
         </p>
       )}
-
-      {pdfUrl && (
-        <a href={pdfUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', padding: '8px 14px', background: '#0d9488', color: 'white', borderRadius: '6px', textDecoration: 'none', fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>
-          View Report (PDF)
-        </a>
-      )}
+      </div>
 
       {fileUrls.length > 0 && (
-        <div style={{ marginBottom: '10px', maxHeight: '120px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '6px' }}>
+        <div style={{ margin: '0 18px 14px', maxHeight: '120px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
           {fileUrls.map((file, i) => (
             <a key={i} href={file.url} target="_blank" rel="noopener noreferrer"
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', fontSize: '12px', color: '#374151', textDecoration: 'none', borderBottom: i < fileUrls.length - 1 ? '1px solid #f3f4f6' : 'none' }}
@@ -340,27 +391,35 @@ const AppraisalPopup = React.memo(function AppraisalPopup({ appraisal, getSigned
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-        <button onClick={() => setEditing(true)} style={{ padding: '8px 14px', background: 'transparent', color: '#374151', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '500' }}>
+      <div style={{ display: 'flex', gap: '10px', padding: '0 18px 18px' }}>
+        <button onClick={() => setEditing(true)} style={{ flex: 1, padding: '11px 14px', background: 'transparent', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '500' }}>
           Edit
         </button>
         {!confirmDelete ? (
-          <button onClick={() => setConfirmDelete(true)} style={{ padding: '8px 14px', background: 'transparent', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '500' }}>
+          <button onClick={() => setConfirmDelete(true)} style={{ flex: 1, padding: '11px 14px', background: 'transparent', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '500' }}>
             Delete
           </button>
         ) : (
-          <button onClick={handleDelete} style={{ padding: '8px 14px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+          <button onClick={handleDelete} style={{ flex: 1, padding: '11px 14px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
             Confirm Delete
           </button>
         )}
       </div>
+
+      {pdfUrl && (
+        <div style={{ padding: '0 18px 18px' }}>
+          <a href={pdfUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', padding: '12px 14px', background: '#0d9488', color: 'white', borderRadius: '8px', textDecoration: 'none', fontSize: '14px', fontWeight: '600' }}>
+            View Report (PDF)
+          </a>
+        </div>
+      )}
     </div>
   );
 });
 
 function MapView({ showToast = () => {} }) {
   const [appraisals, setAppraisals] = useState([]);
-  const [selectedAppraisal, setSelectedAppraisal] = useState(null);
+  const [selectedAppraisalId, setSelectedAppraisalId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -368,9 +427,11 @@ function MapView({ showToast = () => {} }) {
   const autocompleteTimer = useRef(null);
   const mapIdleTimer = useRef(null);
   const fileUrlCacheRef = useRef(new Map());
+  const preloadedImageUrlsRef = useRef(new Set());
   const lastBoundsRef = useRef(null);
   const lastFetchKeyRef = useRef(null);
   const latestFetchIdRef = useRef(0);
+  const selectedAppraisalIdRef = useRef(null);
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
@@ -382,14 +443,52 @@ function MapView({ showToast = () => {} }) {
       latLngBounds: { north: 44.8, south: 42.8, east: -77.0, west: -81.5 },
       strictBounds: false,
     },
+    gestureHandling: 'greedy',
     minZoom: 8,
     streetViewControl: false,
     mapTypeControl: false,
+    fullscreenControl: false,
+    styles: [
+      {
+        featureType: 'poi',
+        stylers: [{ visibility: 'off' }],
+      },
+      {
+        featureType: 'transit',
+        stylers: [{ visibility: 'off' }],
+      },
+      {
+        featureType: 'administrative.land_parcel',
+        stylers: [{ visibility: 'off' }],
+      },
+      {
+        featureType: 'administrative.neighborhood',
+        stylers: [{ visibility: 'off' }],
+      },
+      {
+        featureType: 'landscape.man_made',
+        stylers: [{ visibility: 'off' }],
+      },
+      {
+        featureType: 'road',
+        elementType: 'labels.icon',
+        stylers: [{ visibility: 'off' }],
+      },
+    ],
   }), []);
 
   const onMapLoad = useCallback((map) => {
     mapRef.current = map;
   }, []);
+
+  const selectedAppraisal = useMemo(
+    () => appraisals.find((appraisal) => appraisal.id === selectedAppraisalId) || null,
+    [appraisals, selectedAppraisalId]
+  );
+
+  useEffect(() => {
+    selectedAppraisalIdRef.current = selectedAppraisalId;
+  }, [selectedAppraisalId]);
 
   const fetchAppraisals = useCallback(async (bounds = null) => {
     const fetchId = ++latestFetchIdRef.current;
@@ -437,7 +536,12 @@ function MapView({ showToast = () => {} }) {
       }
 
       if (fetchId === latestFetchIdRef.current) {
-        setAppraisals(applySpiralOffset(allData));
+        const nextAppraisals = applySpiralOffset(allData);
+        setAppraisals(nextAppraisals);
+        const activeSelectedAppraisalId = selectedAppraisalIdRef.current;
+        if (activeSelectedAppraisalId && !nextAppraisals.some((appraisal) => appraisal.id === activeSelectedAppraisalId)) {
+          setSelectedAppraisalId(null);
+        }
       }
     } catch (error) {
       console.error('Error loading appraisals:', error);
@@ -541,9 +645,77 @@ function MapView({ showToast = () => {} }) {
     return data.signedUrl;
   }, []);
 
-  const handleMarkerClick = useCallback((appraisal) => {
-    setSelectedAppraisal(appraisal);
+  const preloadImage = useCallback((url) => {
+    if (!url || preloadedImageUrlsRef.current.has(url)) return;
+    preloadedImageUrlsRef.current.add(url);
+    const image = new Image();
+    image.src = url;
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const warmVisibleAssets = async () => {
+      const visibleAppraisals = appraisals.slice(0, PRELOAD_LIMIT);
+      await Promise.all(
+        visibleAppraisals.map(async (appraisal) => {
+          if (appraisal.photo_url) {
+            const photoUrl = await getSignedUrl('photos', appraisal.photo_url);
+            if (active) preloadImage(photoUrl);
+          }
+          if (appraisal.pdf_url) {
+            await getSignedUrl('pdfs', appraisal.pdf_url);
+          }
+        })
+      );
+    };
+
+    if (appraisals.length > 0) warmVisibleAssets();
+    return () => {
+      active = false;
+    };
+  }, [appraisals, getSignedUrl, preloadImage]);
+
+  const handleMarkerClick = useCallback((appraisal) => {
+    setSelectedAppraisalId(appraisal.id);
+    if (mapRef.current) {
+      const map = mapRef.current;
+      const start = map.getCenter();
+      if (!start) return;
+
+      const startLat = start.lat();
+      const startLng = start.lng();
+      const endLat = appraisal.latitude;
+      const endLng = appraisal.longitude;
+      const startTime = performance.now();
+
+      const easeInOut = (t) => (
+        t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+      );
+
+      const animate = (now) => {
+        const progress = Math.min((now - startTime) / MARKER_PAN_DURATION_MS, 1);
+        const eased = easeInOut(progress);
+        map.setCenter({
+          lat: startLat + (endLat - startLat) * eased,
+          lng: startLng + (endLng - startLng) * eased,
+        });
+        if (progress < 1) requestAnimationFrame(animate);
+      };
+
+      requestAnimationFrame(animate);
+    }
+  }, []);
+
+  const handleMarkerHover = useCallback(async (appraisal) => {
+    if (appraisal.photo_url) {
+      const photoUrl = await getSignedUrl('photos', appraisal.photo_url);
+      preloadImage(photoUrl);
+    }
+    if (appraisal.pdf_url) {
+      await getSignedUrl('pdfs', appraisal.pdf_url);
+    }
+  }, [getSignedUrl, preloadImage]);
 
   const handleSuggestionClick = useCallback((suggestion) => {
     setSearchTerm(suggestion.description);
@@ -572,13 +744,13 @@ function MapView({ showToast = () => {} }) {
 
   const handleAppraisalUpdated = useCallback(() => {
     fetchAppraisals(lastBoundsRef.current);
-    setSelectedAppraisal(null);
+    setSelectedAppraisalId(null);
     showToast('Appraisal updated');
   }, [fetchAppraisals, showToast]);
 
   const handleAppraisalDeleted = useCallback(() => {
     fetchAppraisals(lastBoundsRef.current);
-    setSelectedAppraisal(null);
+    setSelectedAppraisalId(null);
     showToast('Appraisal deleted');
   }, [fetchAppraisals, showToast]);
 
@@ -658,27 +830,57 @@ function MapView({ showToast = () => {} }) {
             zoom={DEFAULT_ZOOM}
             onLoad={onMapLoad}
             onIdle={handleMapIdle}
+            onClick={() => setSelectedAppraisalId(null)}
             options={mapOptions}
           >
-            <MarkerLayer appraisals={appraisals} onMarkerClick={handleMarkerClick} />
-
-            {selectedAppraisal && (
-              <InfoWindow
-                position={{ lat: selectedAppraisal.latitude, lng: selectedAppraisal.longitude }}
-                onCloseClick={() => setSelectedAppraisal(null)}
-                options={{ pixelOffset: { width: 0, height: -28 } }}
-              >
-                <AppraisalPopup
-                  appraisal={selectedAppraisal}
-                  getSignedUrl={getSignedUrl}
-                  onUpdated={handleAppraisalUpdated}
-                  onDeleted={handleAppraisalDeleted}
-                />
-              </InfoWindow>
-            )}
+            <MarkerLayer appraisals={appraisals} onMarkerClick={handleMarkerClick} onMarkerHover={handleMarkerHover} />
           </GoogleMap>
         )}
       </div>
+
+      {selectedAppraisal && (
+        <div style={{
+          position: 'fixed',
+          top: '76px',
+          left: '20px',
+          width: `${DETAIL_PANEL_WIDTH}px`,
+          maxWidth: '92vw',
+          maxHeight: 'calc(100vh - 96px)',
+          overflowY: 'auto',
+          background: 'white',
+          borderRadius: '14px',
+          boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
+          zIndex: 1000,
+        }}>
+          <button
+            onClick={() => setSelectedAppraisalId(null)}
+            aria-label="Close appraisal details"
+            style={{
+              position: 'absolute',
+              top: '14px',
+              right: '14px',
+              width: '28px',
+              height: '28px',
+              borderRadius: '999px',
+              border: 'none',
+              background: 'rgba(17, 24, 39, 0.72)',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: '16px',
+              lineHeight: 1,
+              zIndex: 1,
+            }}
+          >
+            ×
+          </button>
+          <AppraisalPopup
+            appraisal={selectedAppraisal}
+            getSignedUrl={getSignedUrl}
+            onUpdated={handleAppraisalUpdated}
+            onDeleted={handleAppraisalDeleted}
+          />
+        </div>
+      )}
     </div>
   );
 }
