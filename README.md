@@ -13,11 +13,11 @@ An internal tool for viewing and managing property appraisals on an interactive 
 
 ## Tech Stack
 
-- **Frontend:** React, Leaflet.js (via react-leaflet), CARTO Voyager map tiles
+- **Frontend:** React, Google Maps (main app), Leaflet.js/CARTO Voyager (login screen)
 - **Backend/Database:** Supabase (PostgreSQL with Row Level Security)
 - **File Storage:** Supabase Storage (private buckets)
 - **Authentication:** Supabase Auth (email/password)
-- **Geocoding:** OpenStreetMap Nominatim API
+- **Geocoding:** Google Maps Geocoding + Places Autocomplete
 - **Hosting:** Vercel
 
 ## Project Structure
@@ -37,9 +37,9 @@ src/
 
 - Node.js installed
 - A Supabase project with:
-  - An `appraisals` table (address, city, latitude, longitude, photo_url, folder_files)
+  - An `appraisals` table (address, city, latitude, longitude, appraisal_date, photo_url, pdf_url, folder_files)
   - Row Level Security enabled with policies for authenticated users
-  - Storage buckets: `photos`, `appraisal-folders` (both private)
+  - Storage buckets: `photos`, `pdfs`, `appraisal-folders` (all private)
   - User accounts created manually in Supabase Auth
 
 ### Install and Run
@@ -55,6 +55,7 @@ Create a `.env` file in the project root:
 ```
 REACT_APP_SUPABASE_URL=your_supabase_project_url
 REACT_APP_SUPABASE_ANON_KEY=your_supabase_publishable_key
+REACT_APP_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 ```
 
 Start the development server:
@@ -76,7 +77,9 @@ CREATE TABLE appraisals (
   city TEXT NOT NULL,
   latitude DOUBLE PRECISION NOT NULL,
   longitude DOUBLE PRECISION NOT NULL,
+  appraisal_date DATE,
   photo_url TEXT,
+  pdf_url TEXT,
   folder_files TEXT[],
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

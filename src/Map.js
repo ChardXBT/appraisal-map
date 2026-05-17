@@ -25,6 +25,8 @@ const MAX_PAGES = 100;
 const MAX_RECORDS_PER_FETCH = 5000;
 const MAP_IDLE_DEBOUNCE_MS = 250;
 const AUTOCOMPLETE_DEBOUNCE_MS = 300;
+const SIGNED_URL_TTL_SECONDS = 3600;
+const SIGNED_URL_REFRESH_BUFFER_MS = 60 * 1000;
 
 const MARKER_ICON = {
   path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
@@ -72,6 +74,17 @@ const AppraisalPopup = React.memo(function AppraisalPopup({ appraisal, getSigned
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
+    setEditAddress(appraisal.address);
+    setEditCity(appraisal.city);
+    setEditDate(appraisal.appraisal_date || '');
+    setNewPhoto(null);
+    setNewFolderFiles([]);
+    setNewPdf(null);
+    setEditUploadType(appraisal.folder_files?.length ? 'folder' : 'pdf');
+    setConfirmDelete(false);
+  }, [appraisal]);
+
+  useEffect(() => {
     let active = true;
 
     const loadSignedUrls = async () => {
@@ -115,33 +128,42 @@ const AppraisalPopup = React.memo(function AppraisalPopup({ appraisal, getSigned
       const updates = { address: editAddress, city: editCity, appraisal_date: editDate || null };
 
       if (editAddress !== appraisal.address || editCity !== appraisal.city) {
-        const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(editAddress + ', ' + editCity + ', Ontario, Canada')}`,
-          { headers: { Accept: 'application/json' } }
-        );
-        const results = await response.json();
-        if (results.length > 0) {
-          updates.latitude = parseFloat(results[0].lat);
-          updates.longitude = parseFloat(results[0].lon);
-        }
+        const result = await new Promise((resolve, reject) => {
+          const geocoder = new window.google.maps.Geocoder();
+          geocoder.geocode(
+            { address: `${editAddress}, ${editCity}, Ontario, Canada` },
+            (results, status) => {
+              if (status === 'OK' && results[0]) resolve(results[0]);
+              else reject(new Error('Updated address not found. Please check the spelling.'));
+            }
+          );
+        });
+        updates.latitude = result.geometry.location.lat();
+        updates.longitude = result.geometry.location.lng();
       }
 
+      const oldStoragePaths = [];
       if (newPhoto) {
         const photoName = `${Date.now()}_${newPhoto.name}`;
         const { error: photoError } = await supabase.storage.from('photos').upload(photoName, newPhoto);
         if (photoError) throw photoError;
         updates.photo_url = photoName;
+        if (appraisal.photo_url) oldStoragePaths.push({ bucket: 'photos', path: appraisal.photo_url });
       }
 
-      if (newPdf) {
+      if (editUploadType === 'pdf' && newPdf) {
         const pdfName = `${Date.now()}_${newPdf.name}`;
         const { error: pdfError } = await supabase.storage.from('pdfs').upload(pdfName, newPdf);
         if (pdfError) throw pdfError;
         updates.pdf_url = pdfName;
         updates.folder_files = null;
+        if (appraisal.pdf_url) oldStoragePaths.push({ bucket: 'pdfs', path: appraisal.pdf_url });
+        if (appraisal.folder_files?.length) {
+          appraisal.folder_files.forEach((path) => oldStoragePaths.push({ bucket: 'appraisal-folders', path }));
+        }
       }
 
-      if (newFolderFiles.length > 0) {
+      if (editUploadType === 'folder' && newFolderFiles.length > 0) {
         const { default: JSZip } = await import('jszip');
         const zip = new JSZip();
         for (const file of newFolderFiles) {
@@ -153,6 +175,10 @@ const AppraisalPopup = React.memo(function AppraisalPopup({ appraisal, getSigned
         if (zipError) throw zipError;
         updates.folder_files = [zipName];
         updates.pdf_url = null;
+        if (appraisal.folder_files?.length) {
+          appraisal.folder_files.forEach((path) => oldStoragePaths.push({ bucket: 'appraisal-folders', path }));
+        }
+        if (appraisal.pdf_url) oldStoragePaths.push({ bucket: 'pdfs', path: appraisal.pdf_url });
       }
 
       const { error } = await supabase
@@ -161,6 +187,12 @@ const AppraisalPopup = React.memo(function AppraisalPopup({ appraisal, getSigned
         .eq('id', appraisal.id);
 
       if (error) throw error;
+      await Promise.all(
+        oldStoragePaths.map(async ({ bucket, path }) => {
+          const { error: removeError } = await supabase.storage.from(bucket).remove([path]);
+          if (removeError) console.error(`Error removing old ${bucket} object:`, removeError);
+        })
+      );
       setEditing(false);
       onUpdated();
     } catch (err) {
@@ -171,11 +203,22 @@ const AppraisalPopup = React.memo(function AppraisalPopup({ appraisal, getSigned
 
   const handleDelete = async () => {
     try {
+      const storagePaths = [
+        ...(appraisal.photo_url ? [{ bucket: 'photos', path: appraisal.photo_url }] : []),
+        ...(appraisal.pdf_url ? [{ bucket: 'pdfs', path: appraisal.pdf_url }] : []),
+        ...((appraisal.folder_files || []).map((path) => ({ bucket: 'appraisal-folders', path }))),
+      ];
       const { error } = await supabase
         .from('appraisals')
         .delete()
         .eq('id', appraisal.id);
       if (error) throw error;
+      await Promise.all(
+        storagePaths.map(async ({ bucket, path }) => {
+          const { error: removeError } = await supabase.storage.from(bucket).remove([path]);
+          if (removeError) console.error(`Error removing deleted ${bucket} object:`, removeError);
+        })
+      );
       onDeleted();
     } catch (err) {
       alert('Error deleting: ' + err.message);
@@ -216,7 +259,11 @@ const AppraisalPopup = React.memo(function AppraisalPopup({ appraisal, getSigned
         <label style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>Replace Documents</label>
         <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
           {['pdf', 'folder'].map((type) => (
-            <button key={type} type="button" onClick={() => setEditUploadType(type)} style={{
+            <button key={type} type="button" onClick={() => {
+              setEditUploadType(type);
+              if (type === 'pdf') setNewFolderFiles([]);
+              if (type === 'folder') setNewPdf(null);
+            }} style={{
               flex: 1, padding: '5px', fontSize: '11px', fontWeight: '600', borderRadius: '4px', cursor: 'pointer',
               backgroundColor: editUploadType === type ? '#0d9488' : 'white',
               color: editUploadType === type ? 'white' : '#374151',
@@ -323,6 +370,7 @@ function MapView({ showToast = () => {} }) {
   const fileUrlCacheRef = useRef(new Map());
   const lastBoundsRef = useRef(null);
   const lastFetchKeyRef = useRef(null);
+  const latestFetchIdRef = useRef(0);
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
@@ -344,6 +392,7 @@ function MapView({ showToast = () => {} }) {
   }, []);
 
   const fetchAppraisals = useCallback(async (bounds = null) => {
+    const fetchId = ++latestFetchIdRef.current;
     try {
       let baseQuery = supabase
         .from('appraisals')
@@ -387,7 +436,9 @@ function MapView({ showToast = () => {} }) {
         allData.push(...data);
       }
 
-      setAppraisals(applySpiralOffset(allData));
+      if (fetchId === latestFetchIdRef.current) {
+        setAppraisals(applySpiralOffset(allData));
+      }
     } catch (error) {
       console.error('Error loading appraisals:', error);
     }
@@ -479,10 +530,14 @@ function MapView({ showToast = () => {} }) {
 
   const getSignedUrl = useCallback(async (bucket, path) => {
     const key = `${bucket}/${path}`;
-    if (fileUrlCacheRef.current.has(key)) return fileUrlCacheRef.current.get(key);
-    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
+    const cached = fileUrlCacheRef.current.get(key);
+    if (cached && cached.expiresAt - SIGNED_URL_REFRESH_BUFFER_MS > Date.now()) return cached.url;
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
     if (error || !data) return null;
-    fileUrlCacheRef.current.set(key, data.signedUrl);
+    fileUrlCacheRef.current.set(key, {
+      url: data.signedUrl,
+      expiresAt: Date.now() + SIGNED_URL_TTL_SECONDS * 1000,
+    });
     return data.signedUrl;
   }, []);
 

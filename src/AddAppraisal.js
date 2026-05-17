@@ -47,6 +47,7 @@ function AddAppraisal({ onAdded }) {
       }
     }
 
+    const uploadedStoragePaths = [];
     try {
 
       let photoPath = null;
@@ -55,6 +56,7 @@ function AddAppraisal({ onAdded }) {
         const { error: photoError } = await supabase.storage.from('photos').upload(photoName, photo);
         if (photoError) throw photoError;
         photoPath = photoName;
+        uploadedStoragePaths.push({ bucket: 'photos', path: photoName });
       }
 
       let pdfPath = null;
@@ -65,6 +67,7 @@ function AddAppraisal({ onAdded }) {
         const { error: pdfError } = await supabase.storage.from('pdfs').upload(pdfName, pdf);
         if (pdfError) throw pdfError;
         pdfPath = pdfName;
+        uploadedStoragePaths.push({ bucket: 'pdfs', path: pdfName });
       }
 
       if (uploadType === 'folder' && folderFiles.length > 0) {
@@ -78,6 +81,7 @@ function AddAppraisal({ onAdded }) {
         const { error: zipError } = await supabase.storage.from('appraisal-folders').upload(zipName, zipBlob);
         if (zipError) throw zipError;
         folderPaths = [zipName];
+        uploadedStoragePaths.push({ bucket: 'appraisal-folders', path: zipName });
       }
 
       const { error: insertError } = await supabase
@@ -96,6 +100,12 @@ function AddAppraisal({ onAdded }) {
       if (insertError) throw insertError;
       onAdded();
     } catch (err) {
+      await Promise.all(
+        uploadedStoragePaths.map(async ({ bucket, path }) => {
+          const { error: removeError } = await supabase.storage.from(bucket).remove([path]);
+          if (removeError) console.error(`Error removing failed ${bucket} upload:`, removeError);
+        })
+      );
       setError(err.message);
     }
     setLoading(false);
@@ -210,10 +220,16 @@ function AddAppraisal({ onAdded }) {
 
         <label style={{ fontSize: '12px', color: '#6b7280', display: 'block', marginBottom: '6px' }}>Appraisal Documents (optional)</label>
         <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
-          <button type="button" onClick={() => setUploadType('pdf')} style={toggleStyle(uploadType === 'pdf')}>
+          <button type="button" onClick={() => {
+            setUploadType('pdf');
+            setFolderFiles([]);
+          }} style={toggleStyle(uploadType === 'pdf')}>
             Single PDF
           </button>
-          <button type="button" onClick={() => setUploadType('folder')} style={toggleStyle(uploadType === 'folder')}>
+          <button type="button" onClick={() => {
+            setUploadType('folder');
+            setPdf(null);
+          }} style={toggleStyle(uploadType === 'folder')}>
             Folder
           </button>
         </div>
