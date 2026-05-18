@@ -73,6 +73,17 @@ const allLocations = [
   { lat: 43.88, lng: -79.03 },
 ];
 
+const loginMapCenters = [
+  [43.72, -79.42],
+  [43.78, -79.5],
+  [43.65, -79.38],
+  [43.85, -79.44],
+  [43.8, -79.55],
+  [43.7, -79.28],
+  [43.68, -79.61],
+  [43.87, -79.29],
+];
+
 function AnimatedMarker({ position, onRemove }) {
   const [, setAnimClass] = useState('pin-bounce-in');
   const [icon, setIcon] = useState(createPinIcon('pin-bounce-in'));
@@ -104,6 +115,7 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const [activeMarkers, setActiveMarkers] = useState([]);
   const markerIdRef = React.useRef(0);
+  const initialCenterRef = React.useRef(loginMapCenters[Math.floor(Math.random() * loginMapCenters.length)]);
 
   useEffect(() => {
     const usedIndices = new Set();
@@ -154,7 +166,7 @@ function Login() {
 
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}>
         <MapContainer
-          center={[43.72, -79.42]}
+          center={initialCenterRef.current}
           zoom={11}
           style={{ height: '100%', width: '100%' }}
           zoomControl={false}
@@ -194,13 +206,13 @@ function Login() {
         fontFamily: "'DM Sans', sans-serif",
       }}>
         <form onSubmit={handleLogin} style={{
-          background: 'rgba(248, 255, 252, 0.94)',
+          background: 'rgba(222, 241, 229, 0.94)',
           backdropFilter: 'blur(14px)',
           padding: '36px',
           borderRadius: '18px',
           width: '380px',
           boxShadow: '0 18px 48px rgba(15, 23, 42, 0.2)',
-          border: '1px solid rgba(209, 250, 229, 0.9)',
+          border: '1px solid rgba(194, 224, 207, 0.95)',
         }}>
           <div style={{
             width: '42px',

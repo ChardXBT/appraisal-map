@@ -32,6 +32,7 @@ const PRELOAD_LIMIT = 40;
 const MARKER_PAN_DURATION_MS = 650;
 const MIN_APPRAISAL_DATE = '2021-01-01';
 const MAX_APPRAISAL_DATE = '2028-12-31';
+const APP_BOUNDS = { north: 44.8, south: 42.8, east: -77.0, west: -81.5 };
 
 const MARKER_ICON = {
   path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
@@ -41,6 +42,11 @@ const MARKER_ICON = {
   strokeWeight: 2,
   scale: 1.6,
   anchor: { x: 12, y: 22 },
+};
+
+const SEARCH_MARKER_ICON = {
+  ...MARKER_ICON,
+  fillColor: '#f59e0b',
 };
 
 const createClusterStyle = ({ size, fill, textSize }) => ({
@@ -422,6 +428,7 @@ const AppraisalPopup = React.memo(function AppraisalPopup({ appraisal, getSigned
 function MapView({ showToast = () => {} }) {
   const [appraisals, setAppraisals] = useState([]);
   const [selectedAppraisalId, setSelectedAppraisalId] = useState(null);
+  const [searchMarker, setSearchMarker] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -434,6 +441,8 @@ function MapView({ showToast = () => {} }) {
   const lastFetchKeyRef = useRef(null);
   const latestFetchIdRef = useRef(0);
   const selectedAppraisalIdRef = useRef(null);
+  const pendingSearchLocationRef = useRef(null);
+  const pendingSearchRequestIdRef = useRef(0);
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
@@ -441,8 +450,10 @@ function MapView({ showToast = () => {} }) {
   });
 
   const mapOptions = useMemo(() => ({
+    center: DEFAULT_CENTER,
+    zoom: DEFAULT_ZOOM,
     restriction: {
-      latLngBounds: { north: 44.8, south: 42.8, east: -77.0, west: -81.5 },
+      latLngBounds: APP_BOUNDS,
       strictBounds: false,
     },
     gestureHandling: 'greedy',
@@ -479,9 +490,46 @@ function MapView({ showToast = () => {} }) {
     ],
   }), []);
 
+  const applySearchLocation = useCallback((location) => {
+    if (!location) return;
+
+    const markerPosition = { lat: location.lat(), lng: location.lng() };
+    setSearchMarker(markerPosition);
+
+    if (!mapRef.current) {
+      pendingSearchLocationRef.current = location;
+    }
+  }, []);
+
   const onMapLoad = useCallback((map) => {
     mapRef.current = map;
+    if (pendingSearchLocationRef.current) {
+      const location = pendingSearchLocationRef.current;
+      setSearchMarker({ lat: location.lat(), lng: location.lng() });
+      pendingSearchLocationRef.current = null;
+    }
   }, []);
+
+  useEffect(() => {
+    if (!searchMarker || !mapRef.current) return;
+
+    const moveCameraToSearchMarker = () => {
+      if (!mapRef.current) return;
+      mapRef.current.panTo(searchMarker);
+      mapRef.current.setZoom(17);
+    };
+
+    let timeoutId;
+    const animationFrameId = window.requestAnimationFrame(() => {
+      moveCameraToSearchMarker();
+      timeoutId = window.setTimeout(moveCameraToSearchMarker, 180);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [searchMarker]);
 
   const selectedAppraisal = useMemo(
     () => appraisals.find((appraisal) => appraisal.id === selectedAppraisalId) || null,
@@ -599,8 +647,8 @@ function MapView({ showToast = () => {} }) {
           input: value,
           componentRestrictions: { country: 'ca' },
           bounds: new window.google.maps.LatLngBounds(
-            { lat: 42.8, lng: -81.5 },
-            { lat: 44.8, lng: -77.0 }
+            { lat: APP_BOUNDS.south, lng: APP_BOUNDS.west },
+            { lat: APP_BOUNDS.north, lng: APP_BOUNDS.east }
           ),
         },
         (predictions, status) => {
@@ -614,25 +662,48 @@ function MapView({ showToast = () => {} }) {
     }, AUTOCOMPLETE_DEBOUNCE_MS);
   }, []);
 
-  const handleSearch = useCallback(async () => {
-    if (!searchTerm.trim()) return;
-    const geocoder = new window.google.maps.Geocoder();
-    geocoder.geocode(
+  const getPredictions = useCallback((value) => new Promise((resolve) => {
+    const service = new window.google.maps.places.AutocompleteService();
+    service.getPlacePredictions(
       {
-        address: searchTerm + ', Ontario, Canada',
+        input: value,
         componentRestrictions: { country: 'ca' },
+        bounds: new window.google.maps.LatLngBounds(
+          { lat: APP_BOUNDS.south, lng: APP_BOUNDS.west },
+          { lat: APP_BOUNDS.north, lng: APP_BOUNDS.east }
+        ),
       },
-      (results, status) => {
-        if (status === 'OK' && results[0] && mapRef.current) {
-          mapRef.current.panTo(results[0].geometry.location);
-          mapRef.current.setZoom(17);
-          setSuggestions([]);
+      (predictions, status) => {
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
+          resolve(predictions);
         } else {
-          alert('Location not found. Try a different address.');
+          resolve([]);
         }
       }
     );
-  }, [searchTerm]);
+  }), []);
+
+  const getPlaceLocation = useCallback((placeId) => new Promise((resolve) => {
+    const service = new window.google.maps.places.PlacesService(
+      mapRef.current || document.createElement('div')
+    );
+    service.getDetails(
+      {
+        placeId,
+        fields: ['geometry'],
+      },
+      (place, status) => {
+        if (
+          status === window.google.maps.places.PlacesServiceStatus.OK
+          && place?.geometry?.location
+        ) {
+          resolve(place.geometry.location);
+        } else {
+          resolve(null);
+        }
+      }
+    );
+  }), []);
 
   const getSignedUrl = useCallback(async (bucket, path) => {
     const key = `${bucket}/${path}`;
@@ -719,17 +790,30 @@ function MapView({ showToast = () => {} }) {
     }
   }, [getSignedUrl, preloadImage]);
 
-  const handleSuggestionClick = useCallback((suggestion) => {
+  const handleSuggestionClick = useCallback(async (suggestion) => {
     setSearchTerm(suggestion.description);
     setSuggestions([]);
-    const geocoder = new window.google.maps.Geocoder();
-    geocoder.geocode({ placeId: suggestion.place_id }, (results, status) => {
-      if (status === 'OK' && results[0] && mapRef.current) {
-        mapRef.current.panTo(results[0].geometry.location);
-        mapRef.current.setZoom(17);
-      }
-    });
-  }, []);
+    const location = await getPlaceLocation(suggestion.place_id);
+    if (location) {
+      applySearchLocation(location);
+    } else {
+      alert('Location not found. Try a different address.');
+    }
+  }, [applySearchLocation, getPlaceLocation]);
+
+  const handleSearch = useCallback(async () => {
+    if (!searchTerm.trim()) return;
+    const requestId = ++pendingSearchRequestIdRef.current;
+
+    const freshPredictions = await getPredictions(searchTerm);
+    if (requestId !== pendingSearchRequestIdRef.current) return;
+    if (freshPredictions.length > 0) {
+      await handleSuggestionClick(freshPredictions[0]);
+      return;
+    }
+
+    alert('Location not found. Choose one of the suggested addresses.');
+  }, [getPredictions, handleSuggestionClick, searchTerm]);
 
   const handleAddToggle = useCallback(() => {
     setShowAdd((prev) => !prev);
@@ -828,14 +912,21 @@ function MapView({ showToast = () => {} }) {
         ) : (
           <GoogleMap
             mapContainerStyle={MAP_CONTAINER_STYLE}
-            center={DEFAULT_CENTER}
-            zoom={DEFAULT_ZOOM}
             onLoad={onMapLoad}
             onIdle={handleMapIdle}
-            onClick={() => setSelectedAppraisalId(null)}
+            onClick={() => {
+              setSelectedAppraisalId(null);
+              setSearchMarker(null);
+            }}
             options={mapOptions}
           >
             <MarkerLayer appraisals={appraisals} onMarkerClick={handleMarkerClick} onMarkerHover={handleMarkerHover} />
+            {searchMarker && (
+              <Marker
+                position={searchMarker}
+                icon={SEARCH_MARKER_ICON}
+              />
+            )}
           </GoogleMap>
         )}
       </div>
