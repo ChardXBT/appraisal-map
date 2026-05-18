@@ -30,6 +30,8 @@ const SIGNED_URL_REFRESH_BUFFER_MS = 60 * 1000;
 const DETAIL_PANEL_WIDTH = 320;
 const PRELOAD_LIMIT = 40;
 const MARKER_PAN_DURATION_MS = 650;
+const MIN_APPRAISAL_DATE = '2021-01-01';
+const MAX_APPRAISAL_DATE = '2028-12-31';
 
 const MARKER_ICON = {
   path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
@@ -300,7 +302,7 @@ const AppraisalPopup = React.memo(function AppraisalPopup({ appraisal, getSigned
         <input type="text" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} style={inputStyle} placeholder="Address" />
         <input type="text" value={editCity} onChange={(e) => setEditCity(e.target.value)} style={inputStyle} placeholder="City" />
         <label style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '3px' }}>Report Date</label>
-        <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} style={inputStyle} />
+        <input type="date" value={editDate} min={MIN_APPRAISAL_DATE} max={MAX_APPRAISAL_DATE} onChange={(e) => setEditDate(e.target.value)} style={inputStyle} />
 
         <label style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '3px' }}>Replace Photo</label>
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: '6px', marginBottom: '8px', cursor: 'pointer', background: 'white' }}>

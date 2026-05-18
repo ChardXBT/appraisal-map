@@ -11,7 +11,7 @@ function AddAppraisal({ onAdded }) {
   const [folderFiles, setFolderFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const minAppraisalDate = '2024-01-01';
+  const minAppraisalDate = '2021-01-01';
   const maxAppraisalDate = '2028-12-31';
 
   const handleSubmit = async (e) => {
